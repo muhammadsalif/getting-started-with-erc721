@@ -308,7 +308,19 @@ contract ERC721 is IERC165, IERC721 {
         virtual
         returns (bool success, uint256 newIndex)
     {
+        require(tokenId > 0, "Invalid token id provided");
+        require(
+            _tokenExists(tokenId),
+            "Token already not exists in the contract"
+        );
+        require(owner != address(0), "Owner address can't be null address");
+        require(
+            ownerOf(tokenId) == msg.sender,
+            "Only owner can call delete token function"
+        );
+
         // swapping tokenId with last index of array
+
         // now popping out the last index of array
     }
 
