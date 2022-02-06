@@ -80,7 +80,12 @@ contract ERC721 is IERC165, IERC721 {
         uint256 tokenId
     ) external override {
         // msg.sender is approve operator
+        require(
+            _isApprovedOrOwner(msg.sender, tokenId),
+            "This address is not allowed to transfer given tokenId"
+        );
         // call helper _transfer function with parameters (to, from, tokenId)
+        _transfer(from, to, tokenId);
     }
 
     // approve number of tokens
@@ -91,7 +96,7 @@ contract ERC721 is IERC165, IERC721 {
         _approve(to, tokenId);
     }
 
-    // Returns the account approved for `tokenId` token.
+    // Returns the account approved for `tokenId` token. from tokenApprovals mapping
     function getApproved(uint256 tokenId)
         public
         view
@@ -153,12 +158,19 @@ contract ERC721 is IERC165, IERC721 {
         return _totalSupply;
     }
 
-    function transfer(address to, uint256 tokenId) public view {
+    function transfer(address to, uint256 tokenId) public virtual {
         require(to != address(0), "Address cant be null address");
         // Check msg.sender is owner or approve operator with helper function _isApprovedOrOwner
+        require(
+            _isApprovedOrOwner(msg.sender, tokenId),
+            "Only owner or approved person can transfer tokens"
+        );
+
         // call helper method of _transfer with parameter of (to, from, tokenId)
+        _transfer(to, msg.sender, tokenId);
     }
 
+    // getting index of ownersTokenIndex mapping with tokenId and owner address
     function _indexOf(uint256 tokenId, address owner)
         external
         view
@@ -168,6 +180,7 @@ contract ERC721 is IERC165, IERC721 {
         return _ownersTokenIndex[owner][tokenId];
     }
 
+    // getting index of ownersToken mapping with index and owner address
     function _tokenOfOwnerByIndex(uint256 index, address owner)
         external
         view
@@ -177,7 +190,7 @@ contract ERC721 is IERC165, IERC721 {
         return _ownerTokens[owner][index];
     }
 
-    // checking if token exists in network or not
+    // checking if token exists in contract or not from tokenOwners mapping
     function _tokenExists(uint256 tokenId) public view returns (bool) {
         require(tokenId > 0, "ERC721: Token does not exist");
         address owner = _tokenOwners[tokenId];
@@ -191,8 +204,9 @@ contract ERC721 is IERC165, IERC721 {
         view
         returns (bool)
     {
-        require(_tokenExists(tokenId), "Token not exists in network");
+        require(_tokenExists(tokenId), "Token not exists in contract");
         address owner = ownerOf(tokenId);
+        // This will return true or false
         return (spender == owner ||
             getApproved(tokenId) == spender ||
             isApprovedForAll(owner, spender));
@@ -201,48 +215,91 @@ contract ERC721 is IERC165, IERC721 {
     function _mint(address to, uint256 tokenId) public returns (bool) {
         require(to != address(0), "Address can't be null address");
         // adding one in totalSupply
-        _totalSupply += _totalSupply;
+        _totalSupply = _totalSupply.add(1);
         // call _addToken() helper function which will update the state
+        _addToken(to, tokenId);
+
+        // When we
+        emit Transfer(address(0), to, tokenId);
     }
 
     function _burn(uint256 tokenId) internal virtual {
         address owner = ownerOf(tokenId);
         require(owner == msg.sender, "Only owner can burn it's tokens");
-        // your code
 
-        // clear approval
+        // clear approval with helper method
+        _approve(address(0), tokenId);
 
         // clear metadata if any
+        if (bytes(_tokenURIs[tokenId]).length != 0) {
+            // delete keyword don't completely delete from blockchain,
+            // it will just set default value to that specific value of mapping
+            delete _tokenURIs[tokenId];
+        }
 
         // subtract from total supply
+        _totalSupply = _totalSupply.sub(1);
 
-        // internal function of _deleteToken
+        // state update on token delete internal function of _deleteToken
+        _deleteToken(owner, tokenId);
     }
 
     function _transfer(
         address from,
         address to,
         uint256 tokenId
-    ) public returns (bool) {
-        address owner = _tokenOwners[tokenId];
+    ) public virtual {
+        // checking transfering from is exactly the person holding this token
         require(
-            owner == msg.sender,
-            "Only owner can transfer ownership of token"
+            ownerOf(tokenId) == from,
+            "Transfering of token from address that is not owning it"
         );
+        // checking msg.sender is owner or a approved operator
+        require(
+            _isApprovedOrOwner(msg.sender, tokenId),
+            "Only owner or approved operator can transfer ownership of token"
+        );
+        // tokenId must be greater than 0
+        require(tokenId > 0, "Invalid token id");
+        // address can't be null address
+        require(to != address(0), "Address can't be null address");
+
+        // setting address agains tokenId in tokenOwners mapping
         _tokenOwners[tokenId] = to;
 
         // call internal function _deleteToken
+        _deleteToken(from, tokenId);
 
         // call internal function _addToken
+        _addToken(to, tokenId);
+
+        // event firing transfer
+        emit Transfer(from, to, tokenId);
     }
 
-    // adding new token to network
+    // adding new token to contract
+    // This fuction is responsible for adding tokens in all of the 3 mappings
     function _addToken(address owner, uint256 tokenId)
         internal
         virtual
         returns (bool success, uint256 newIndex)
     {
-        // This fuction is responsible for adding tokens in all of the 3 mappings
+        // provided tokenId already exists or not in the contract
+        require(
+            !_tokenExists(tokenId),
+            "provided token id is already exists in the contract"
+        );
+
+        _tokenOwners[tokenId] = owner;
+
+        _ownerTokens[owner].push(tokenId);
+
+        // getting new index to store value at that place
+        newIndex = _ownersTokenIndex[owner].length - 1;
+        // now placing to the last index
+        _ownersTokenIndex[owner][tokenId] = newIndex;
+
+        success = true;
     }
 
     // Removing token with a special technique
@@ -255,24 +312,30 @@ contract ERC721 is IERC165, IERC721 {
         // now popping out the last index of array
     }
 
-    // this token will set token uri to network mapping
+    // this token will set token uri to contract mapping
     function _setTokenUri(uint256 tokenId, string memory _tokenURI)
         internal
         virtual
     {
-        // setting tokenUri to network global mapping
+        // setting tokenUri to contract global mapping
     }
 
     // function to set approval operator
     function _approve(address to, uint256 tokenId) public {
         // set new approve operator to mapping
-        // emit appoval event
         require(
             ownerOf(tokenId) == msg.sender,
             "Only token owner can approve its token"
         );
-        require(to != address(0), "Address cant be null address");
+
+        // setting approval address to tokenApproval mapping
         _tokenApprovals[tokenId] = to;
+
+        // // THIS BLOCK OF CODE IS NOT WORKING
+        // // setting true false in operatorApproval mapping with helper function
+        // setApprovalForAll(to, true);
+
+        // emit appoval event
         emit Approval(ownerOf(tokenId), to, tokenId);
     }
 }
