@@ -306,7 +306,7 @@ contract ERC721 is IERC165, IERC721 {
     function _deleteToken(address owner, uint256 tokenId)
         internal
         virtual
-        returns (bool success, uint256 newIndex)
+        returns (bool success, uint256 currentIndex)
     {
         require(tokenId > 0, "Invalid token id provided");
         require(
@@ -319,9 +319,24 @@ contract ERC721 is IERC165, IERC721 {
             "Only owner can call delete token function"
         );
 
+        currentIndex = _ownersTokenIndex[owner][tokenId];
         // swapping tokenId with last index of array
+        if (_ownerTokens[owner].length > 1) {
+            uint256 lastIndex = _ownerTokens[owner].length - 1;
+            uint256 lastToken = _ownerTokens[owner][lastIndex];
+            _ownerTokens[owner][currentIndex] = lastToken;
+            _ownersTokenIndex[owner][lastToken] = currentIndex;
+        }
+        // remove last entry
+        _ownerTokens[owner].pop();
 
-        // now popping out the last index of array
+        // remove index
+        delete _ownersTokenIndex[owner][tokenId];
+
+        // remove owner
+        delete _tokenOwners[tokenId];
+
+        success = true;
     }
 
     // this token will set token uri to contract mapping
